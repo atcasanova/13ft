@@ -1,13 +1,73 @@
 import flask
 import requests
 from flask import request
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment
 from urllib.parse import urlparse, urljoin
 
 app = flask.Flask(__name__)
 googlebot_headers = {
     "User-Agent": "Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X Build/MMB29P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.6533.119 Mobile Safari/537.36 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
 }
+SKIP_TEXT_TRANSFORM_TAGS = {"script", "style", "textarea", "pre", "code"}
+VOWELS = "aeiouAEIOU"
+
+
+def replace_n_vowel_m_vowel(text):
+    transformed = []
+    index = 0
+
+    while index < len(text):
+        if (
+            index + 3 < len(text)
+            and text[index] in "nN"
+            and text[index + 1] in VOWELS
+            and text[index + 2] in "mM"
+            and text[index + 3] in VOWELS
+        ):
+            first_m = "M" if text[index].isupper() else "m"
+            second_m = "M" if text[index + 2].isupper() else "m"
+            transformed.append(first_m + text[index + 3] + second_m + text[index + 3])
+            index += 4
+            continue
+
+        transformed.append(text[index])
+        index += 1
+
+    return "".join(transformed)
+
+
+def replace_r_at_word_start_or_between_letters(text):
+    transformed = []
+
+    for index, char in enumerate(text):
+        if char in "rR":
+            previous_is_letter = index > 0 and text[index - 1].isalpha()
+            next_is_letter = index + 1 < len(text) and text[index + 1].isalpha()
+            starts_word = not previous_is_letter and next_is_letter
+            is_between_letters = previous_is_letter and next_is_letter
+
+            if starts_word or is_between_letters:
+                transformed.append("L" if char.isupper() else "l")
+                continue
+
+        transformed.append(char)
+
+    return "".join(transformed)
+
+
+def prank_text(text):
+    return replace_r_at_word_start_or_between_letters(replace_n_vowel_m_vowel(text))
+
+
+def apply_prank_text_transform(soup):
+    for node in soup.find_all(string=True):
+        if isinstance(node, Comment):
+            continue
+        if node.parent and node.parent.name in SKIP_TEXT_TRANSFORM_TAGS:
+            continue
+        node.replace_with(prank_text(str(node)))
+
+
 html = """
 <!DOCTYPE html>
 <html lang="en">
@@ -206,6 +266,8 @@ def add_base_tag(html_content, original_url):
             head_tag = soup.new_tag('head')
             head_tag.insert(0, new_base_tag)
             soup.insert(0, head_tag)
+
+    apply_prank_text_transform(soup)
     
     return str(soup)
 
