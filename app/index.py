@@ -38,19 +38,36 @@ def replace_n_vowel_m_vowel(text):
 
 def replace_r_at_word_start_or_between_letters(text):
     transformed = []
+    index = 0
 
-    for index, char in enumerate(text):
+    while index < len(text):
+        char = text[index]
+
         if char in "rR":
             previous_is_letter = index > 0 and text[index - 1].isalpha()
             next_is_letter = index + 1 < len(text) and text[index + 1].isalpha()
             starts_word = not previous_is_letter and next_is_letter
             is_between_letters = previous_is_letter and next_is_letter
+            has_double_r = index + 1 < len(text) and text[index + 1] in "rR"
+            is_between_vowels = (
+                index > 0
+                and index + 2 < len(text)
+                and text[index - 1] in VOWELS
+                and text[index + 2] in VOWELS
+            )
+
+            if has_double_r and is_between_vowels:
+                transformed.append("L" if char.isupper() else "l")
+                index += 2
+                continue
 
             if starts_word or is_between_letters:
                 transformed.append("L" if char.isupper() else "l")
+                index += 1
                 continue
 
         transformed.append(char)
+        index += 1
 
     return "".join(transformed)
 
