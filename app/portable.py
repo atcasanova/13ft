@@ -20,6 +20,11 @@ META_TEXT_FIELDS = {
     ("itemprop", "description"),
     ("itemprop", "name"),
 }
+META_URL_FIELDS = {
+    ("name", "twitter:url"),
+    ("property", "og:url"),
+    ("itemprop", "url"),
+}
 
 
 def replace_n_vowel_m_vowel(text):
@@ -86,7 +91,7 @@ def prank_text(text):
     return replace_r_at_word_start_or_between_letters(replace_n_vowel_m_vowel(text))
 
 
-def apply_prank_meta_transform(soup):
+def apply_prank_meta_transform(soup, proxy_url=None):
     for meta_tag in soup.find_all("meta"):
         if not meta_tag.has_attr("content"):
             continue
@@ -95,6 +100,22 @@ def apply_prank_meta_transform(soup):
             if meta_tag.get(attribute_name, "").strip().lower() == attribute_value:
                 meta_tag["content"] = prank_text(meta_tag["content"])
                 break
+
+        if proxy_url is not None:
+            for attribute_name, attribute_value in META_URL_FIELDS:
+                if meta_tag.get(attribute_name, "").strip().lower() == attribute_value:
+                    meta_tag["content"] = proxy_url
+                    break
+
+
+def apply_prank_share_url_transform(soup, proxy_url):
+    if proxy_url is None:
+        return
+
+    for link_tag in soup.find_all("link", href=True):
+        rel_values = {value.lower() for value in link_tag.get("rel", [])}
+        if rel_values.intersection({"canonical", "shortlink", "shorturl"}):
+            link_tag["href"] = proxy_url
 
 
 def apply_prank_text_transform(soup):
@@ -285,7 +306,7 @@ html = """
 </html>
 """
 
-def add_base_tag(html_content, original_url):
+def add_base_tag(html_content, original_url, proxy_url=None):
     soup = BeautifulSoup(html_content, 'html.parser')
     parsed_url = urlparse(original_url)
     base_url = f"{parsed_url.scheme}://{parsed_url.netloc}/"
@@ -305,24 +326,25 @@ def add_base_tag(html_content, original_url):
             head_tag.insert(0, new_base_tag)
             soup.insert(0, head_tag)
 
-    apply_prank_meta_transform(soup)
+    apply_prank_meta_transform(soup, proxy_url)
+    apply_prank_share_url_transform(soup, proxy_url)
     apply_prank_text_transform(soup)
     
     return str(soup)
 
-def bypass_paywall(url):
+def bypass_paywall(url, proxy_url=None):
     """
     Bypass paywall for a given url
     """
     if url.startswith("http"):
         response = requests.get(url, headers=googlebot_headers)
         response.encoding = response.apparent_encoding
-        return add_base_tag(response.text, response.url)
+        return add_base_tag(response.text, response.url, proxy_url)
 
     try:
-        return bypass_paywall("https://" + url)
+        return bypass_paywall("https://" + url, proxy_url)
     except requests.exceptions.RequestException as e:
-        return bypass_paywall("http://" + url)
+        return bypass_paywall("http://" + url, proxy_url)
 
 
 @app.route("/")
@@ -334,7 +356,7 @@ def main_page():
 def show_article():
     link = flask.request.form["link"]
     try:
-        return bypass_paywall(link)
+        return bypass_paywall(link, request.url)
     except requests.exceptions.RequestException as e:
         return str(e), 400
     except e:
@@ -349,7 +371,7 @@ def get_article(path):
     if len(parts) >= 5:
         actual_url = "https://" + parts[4].lstrip("/")
         try:
-            return bypass_paywall(actual_url)
+            return bypass_paywall(actual_url, request.url)
         except requests.exceptions.RequestException as e:
             return str(e), 400
         except e:
