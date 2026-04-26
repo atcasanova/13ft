@@ -10,6 +10,16 @@ googlebot_headers = {
 }
 SKIP_TEXT_TRANSFORM_TAGS = {"script", "style", "textarea", "pre", "code"}
 VOWELS = "aeiouAEIOU"
+META_TEXT_FIELDS = {
+    ("name", "description"),
+    ("name", "twitter:description"),
+    ("name", "twitter:title"),
+    ("property", "og:description"),
+    ("property", "og:site_name"),
+    ("property", "og:title"),
+    ("itemprop", "description"),
+    ("itemprop", "name"),
+}
 
 
 def replace_n_vowel_m_vowel(text):
@@ -74,6 +84,17 @@ def replace_r_at_word_start_or_between_letters(text):
 
 def prank_text(text):
     return replace_r_at_word_start_or_between_letters(replace_n_vowel_m_vowel(text))
+
+
+def apply_prank_meta_transform(soup):
+    for meta_tag in soup.find_all("meta"):
+        if not meta_tag.has_attr("content"):
+            continue
+
+        for attribute_name, attribute_value in META_TEXT_FIELDS:
+            if meta_tag.get(attribute_name, "").strip().lower() == attribute_value:
+                meta_tag["content"] = prank_text(meta_tag["content"])
+                break
 
 
 def apply_prank_text_transform(soup):
@@ -284,6 +305,7 @@ def add_base_tag(html_content, original_url):
             head_tag.insert(0, new_base_tag)
             soup.insert(0, head_tag)
 
+    apply_prank_meta_transform(soup)
     apply_prank_text_transform(soup)
     
     return str(soup)
